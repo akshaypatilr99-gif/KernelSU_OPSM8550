@@ -1,0 +1,41 @@
+      - name: Inject Kpatch Next & Fix Missing Kconfigs
+        run: |
+          cd kernel_source
+          
+          # 1. Missing Thermal Kconfig bypass karne
+          # Jar folder nasel tar Kconfig madhli ti line delete karne
+          if [ ! -f "kernel/oplus_cpu/thermal/Kconfig" ]; then
+             echo "Fixing missing thermal Kconfig reference..."
+             sed -i '/kernel\/oplus_cpu\/thermal\/Kconfig/d' init/Kconfig
+          fi
+
+          # 2. Defconfig shodha
+          DEFCONFIG_FILE=$(find arch/arm64/configs/ -name "*defconfig" | grep -E "sm8550|vendor|kalama" | head -n 1)
+          if [ -z "$DEFCONFIG_FILE" ]; then
+             DEFCONFIG_FILE=$(find arch/arm64/configs/ -name "*defconfig" | head -n 1)
+          fi
+          CONF_NAME=$(basename $DEFCONFIG_FILE)
+
+          # 3. Kpatch & Kprobes Configs Inject karne
+          sed -i 's/# CONFIG_KPROBES is not set/CONFIG_KPROBES=y/' "$DEFCONFIG_FILE"
+          {
+            echo "CONFIG_KPROBES=y"
+            echo "CONFIG_KPROBE_EVENTS=y"
+            echo "CONFIG_HAVE_KPROBES=y"
+            echo "CONFIG_KPROBES_ON_FTRACE=y"
+            echo "CONFIG_DYNAMIC_FTRACE=y"
+            echo "CONFIG_DYNAMIC_FTRACE_WITH_REGS=y"
+            echo "CONFIG_FTRACE=y"
+            echo "CONFIG_KPATCH=y"
+            echo "CONFIG_KALLSYMS=y"
+            echo "CONFIG_KALLSYMS_ALL=y"
+          } >> "$DEFCONFIG_FILE"
+
+          # 4. Compilation suru karne
+          make O=out ARCH=arm64 $CONF_NAME
+          make O=out ARCH=arm64 -j$(nproc) \
+            CC=clang \
+            CLANG_TRIPLE=aarch64-linux-gnu- \
+            CROSS_COMPILE=aarch64-linux-gnu- \
+            LLVM=1 LLVM_IAS=1
+            
