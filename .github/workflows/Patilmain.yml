@@ -1,0 +1,96 @@
+name: Compile Kernel
+
+on:
+  workflow_dispatch:
+    inputs:
+      clang_version:
+        description: "Type the clang version of ur kernel"
+        required: true
+        type: choice
+        options:
+          - clang-r547379
+          - clang-r563880
+          - clang-r563880c
+          - clang-r574158
+          - clang-stable
+          
+      kernel_source:
+        description: "Kernel Source Code"
+        required: true
+        type: choice
+        options:
+          - OnePlus12R-development
+          - LineageOS
+          - crdroidandroid
+          
+      kernel_branch:
+        description: "Kernel Branch (e.g. sixteen-qpr1)"
+        required: true
+        type: string
+        default: "sixteen-qpr1"
+        
+      ksu_type:
+        description: "KernelSU Version"
+        required: true
+        type: choice
+        options:
+          - None
+          - Official-KernelSU
+          - KernelSU-Next
+          - KernelSU-Next-with-susfs
+          - KowSU
+          - ReSukiSU
+          - ReSukiSU-with-susfs
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Source
+        uses: actions/checkout@v4
+
+      - name: Inject Kpatch Next & Kprobes Configs
+        run: |
+          # 1. Defconfig file automatically shodha (OnePlus 12R/SM8550 sathi)
+          # He command sm8550_defconfig kiwa vendor_defconfig shodhel
+          DEFCONFIG_PATH=$(find . -name "sm8550_defconfig" -o -name "vendor_defconfig" | head -n 1)
+
+          if [ -z "$DEFCONFIG_PATH" ]; then
+            echo "Error: Defconfig file not found! Checking alternative paths..."
+            DEFCONFIG_PATH=$(find arch/arm64/configs/ -name "*defconfig" | head -n 1)
+          fi
+
+          if [ -z "$DEFCONFIG_PATH" ]; then
+            echo "Error: No defconfig found. Manual check required."
+            exit 1
+          fi
+
+          echo "Targeting Defconfig at: $DEFCONFIG_PATH"
+          echo "Injecting Android 16 & Kpatch Next Optimizations..."
+
+          # 2. Existing settings reset karne ani navin enable karne
+          sed -i 's/# CONFIG_KPROBES is not set/CONFIG_KPROBES=y/' "$DEFCONFIG_PATH"
+          sed -i 's/# CONFIG_FTRACE is not set/CONFIG_FTRACE=y/' "$DEFCONFIG_PATH"
+          
+          # 3. Kprobes, Ftrace, Kallsyms ani Kpatch configurations add karne
+          {
+            echo "CONFIG_KPROBES=y"
+            echo "CONFIG_KPROBE_EVENTS=y"
+            echo "CONFIG_HAVE_KPROBES=y"
+            echo "CONFIG_KPROBES_ON_FTRACE=y"
+            echo "CONFIG_DYNAMIC_FTRACE=y"
+            echo "CONFIG_DYNAMIC_FTRACE_WITH_REGS=y"
+            echo "CONFIG_FTRACE=y"
+            echo "CONFIG_KPATCH=y"
+            echo "CONFIG_KALLSYMS=y"
+            echo "CONFIG_KALLSYMS_ALL=y"
+          } >> "$DEFCONFIG_PATH"
+
+          echo "Kpatch Next configurations successfully injected into $DEFCONFIG_PATH!"
+
+      - name: Start Kernel Compilation
+        run: |
+          echo "Building kernel for OnePlus 12R with ${{ github.event.inputs.clang_version }}..."
+          # Ithe tumcha actual build script kiwa make command asel
+          # Example: ./build.sh OR make O=out ARCH=arm64 $(basename $DEFCONFIG_PATH)
+          
