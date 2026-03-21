@@ -1,0 +1,91 @@
+name: Compile Kernel
+
+on:
+  workflow_dispatch:
+    inputs:
+      clang_version:
+        description: "Select Clang version"
+        required: true
+        type: choice
+        options:
+          - clang-r547379
+          - clang-r583297
+      kernel_source:
+        description: "Kernel Source Link"
+        required: true
+        type: string
+        default: "https://github.com/AlphaDroid-devices/kernel_oneplus_sm8550"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Workflow
+        uses: actions/checkout@v4
+
+      - name: Install Build Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bc build-essential flex bison libssl-dev libelf-dev clang lld llvm
+
+      - name: Clone Kernel Source
+        run: |
+          git clone --depth=1 ${{ github.event.inputs.kernel_source }} kernel_source
+
+      - name: Hard Fix Missing Kconfigs
+        run: |
+          cd kernel_source
+          echo "Deep cleaning missing Kconfig references..."
+          # Script to find all 'source' lines in Kconfigs and check if file exists
+          find . -name "Kconfig*" | xargs sed -i 's/source "kernel\/oplus_cpu\/thermal\/Kconfig"/# source "kernel\/oplus_cpu\/thermal\/Kconfig"/g' || true
+          find . -name "Kconfig*" | xargs sed -i 's/source "drivers\/nfc\/oplus_nfc\/Kconfig"/# source "drivers\/nfc\/oplus_nfc\/Kconfig"/g' || true
+          find . -name "Kconfig*" | xargs sed -i 's/source "drivers\/base\/kernelFwUpdate\/Kconfig"/# source "drivers\/base\/kernelFwUpdate\/Kconfig"/g' || true
+          
+          # Universal bypass for any other oplus missing modules
+          find . -name "Kconfig*" -exec sed -i '/oplus_cpu/d' {} + || true
+          find . -name "oplus_nfc" -exec sed -i '/oplus_nfc/d' {} + || true
+          find . -name "kernelFwUpdate" -exec sed -i '/kernelFwUpdate/d' {} + || true
+
+      - name: Download Clang Compiler
+        run: |
+          mkdir clang
+          cd clang
+          wget https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/main/${{ github.event.inputs.clang_version }}.tar.gz
+          tar -xf *.tar.gz
+          echo "$(pwd)/bin" >> $GITHUB_PATH
+
+      - name: Build Process
+        run: |
+          cd kernel_source
+          # Find Defconfig
+          DEFCONFIG_FILE=$(find arch/arm64/configs/ -name "*defconfig" | grep -E "sm8550|vendor|kalama" | head -n 1)
+          if [ -z "$DEFCONFIG_FILE" ]; then
+             DEFCONFIG_FILE=$(find arch/arm64/configs/ -name "*defconfig" | head -n 1)
+          fi
+          CONF_NAME=$(basename $DEFCONFIG_FILE)
+          
+          # Inject Kpatch
+          sed -i 's/# CONFIG_KPROBES is not set/CONFIG_KPROBES=y/' "$DEFCONFIG_FILE"
+          {
+            echo "CONFIG_KPROBES=y"
+            echo "CONFIG_KPROBE_EVENTS=y"
+            echo "CONFIG_HAVE_KPROBES=y"
+            echo "CONFIG_KPROBES_ON_FTRACE=y"
+            echo "CONFIG_DYNAMIC_FTRACE=y"
+            echo "CONFIG_DYNAMIC_FTRACE_WITH_REGS=y"
+            echo "CONFIG_FTRACE=y"
+            echo "CONFIG_KPATCH=y"
+            echo "CONFIG_KALLSYMS=y"
+            echo "CONFIG_KALLSYMS_ALL=y"
+          } >> "$DEFCONFIG_FILE"
+          
+          # Compilation
+          make O=out ARCH=arm64 $CONF_NAME
+          make O=out ARCH=arm64 -j$(nproc) CC=clang CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-gnu- LLVM=1 LLVM_IAS=1
+
+      - name: Upload Kernel Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: OnePlus12R-Kernel-A16
+          path: kernel_source/out/arch/arm64/boot/Image.gz
+          
