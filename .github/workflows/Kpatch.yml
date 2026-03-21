@@ -1,0 +1,95 @@
+name: Compile Kernel
+
+on:
+  workflow_dispatch:
+    inputs:
+      clang_version:
+        description: "Type the clang version of ur kernel"
+        required: true
+        type: choice
+        options:
+          - clang-r547379
+          - clang-r563880
+          - clang-r563880c
+          - clang-r574158
+          - clang-stable
+          
+      kernel_source:
+        description: "Kernel Source Code"
+        required: true
+        type: choice
+        options:
+          - OnePlus12R-development
+          - LineageOS
+          - crdroidandroid
+          
+      kernel_branch:
+        description: "Kernel Branch (e.g. sixteen-qpr1)"
+        required: true
+        type: string
+        default: "sixteen-qpr1"
+        
+      ksu_type:
+        description: "KernelSU Version"
+        required: true
+        type: choice
+        options:
+          - None
+          - Official-KernelSU
+          - KernelSU-Next
+          - KernelSU-Next-with-susfs
+          - KowSU
+          - ReSukiSU
+          - ReSukiSU-with-susfs
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Source
+        uses: actions/checkout@v4
+
+      - name: Start Kernel Compilation & Inject Configs
+        run: |
+          echo "Building kernel for OnePlus 12R..."
+          
+          # 1. Ithe tumchi actual kernel sync/clone script asavi 
+          # (Udaharansathi: git clone tumcha_source_link)
+          # Jar tumcha workflow pahile source download karat asel, tar ti step ithe asu dya.
+
+          # --- CONFIG INJECTION START (Source download zalyanantar) ---
+          
+          # 2. Defconfig file shodha (SM8550 sathi)
+          # Search everywhere in the current directory for the defconfig
+          DEFCONFIG_PATH=$(find . -name "sm8550_defconfig" -o -name "vendor_defconfig" | head -n 1)
+
+          if [ ! -z "$DEFCONFIG_PATH" ]; then
+            echo "Found Defconfig at: $DEFCONFIG_PATH"
+            echo "Injecting Android 16 & Kpatch Next Optimizations..."
+
+            sed -i 's/# CONFIG_KPROBES is not set/CONFIG_KPROBES=y/' "$DEFCONFIG_PATH"
+            sed -i 's/# CONFIG_FTRACE is not set/CONFIG_FTRACE=y/' "$DEFCONFIG_PATH"
+            
+            {
+              echo "CONFIG_KPROBES=y"
+              echo "CONFIG_KPROBE_EVENTS=y"
+              echo "CONFIG_HAVE_KPROBES=y"
+              echo "CONFIG_KPROBES_ON_FTRACE=y"
+              echo "CONFIG_DYNAMIC_FTRACE=y"
+              echo "CONFIG_DYNAMIC_FTRACE_WITH_REGS=y"
+              echo "CONFIG_FTRACE=y"
+              echo "CONFIG_KPATCH=y"
+              echo "CONFIG_KALLSYMS=y"
+              echo "CONFIG_KALLSYMS_ALL=y"
+            } >> "$DEFCONFIG_PATH"
+            
+            echo "Kpatch Next configurations successfully injected!"
+          else
+            echo "Warning: Defconfig not found yet. Make sure source is cloned before this step."
+          fi
+          # --- CONFIG INJECTION END ---
+
+          # 3. Actual Make/Build Commands ithe taka
+          # Example: make O=out ARCH=arm64 vendor/sm8550_defconfig
+          # make O=out ARCH=arm64 -j$(nproc)
+          
