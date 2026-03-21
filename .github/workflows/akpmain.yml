@@ -1,0 +1,90 @@
+name: Compile Kernel
+
+on:
+  workflow_dispatch:
+    inputs:
+      clang_version:
+        description: "Type the clang version of ur kernel"
+        required: true
+        type: choice
+        options:
+          - clang-3289846
+          - clang-r547379
+          - clang-r563880
+          - clang-r563880c
+          - clang-r574158
+          - clang-stable
+          
+      kernel_source:
+        description: "Kernel Source Code"
+        required: true
+        type: choice
+        options:
+          - LineageOS
+          - crdroidandroid
+          - OnePlus12R-development
+          
+      kernel_branch:
+        description: "Kernel Branch (such as lineage-23.2 sixteen-qpr1)"
+        required: true
+        type: string
+        default: ""
+        
+      ksu_type:
+        description: "KernelSU Version"
+        required: true
+        type: choice
+        options:
+          - None
+          - Official-KernelSU
+          - KernelSU-Next
+          - KernelSU-Next-with-susfs
+          - KowSU
+          - ReSukiSU
+          - ReSukiSU-with-susfs
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Source
+        uses: actions/checkout@v4
+
+      # --- KPATCH NEXT CONFIGURATION START ---
+      - name: Inject Kpatch Next & Kprobes Configs
+        run: |
+          # Kernel source folder madhe prwesh kara
+          # (Tumchya repo madhil folder che naav 'kernel' asel tar badla)
+          cd kernel_source || cd * # OnePlus 12R (SM8550) sathi defconfig path
+          DEFCONFIG_PATH="arch/arm64/configs/vendor/sm8550_defconfig"
+
+          echo "Optimizing $DEFCONFIG_PATH for Android 16 & Kpatch Next..."
+
+          # Juni settings reset karne ani navin enable karne
+          sed -i 's/# CONFIG_KPROBES is not set/CONFIG_KPROBES=y/' $DEFCONFIG_PATH
+          sed -i 's/# CONFIG_FTRACE is not set/CONFIG_FTRACE=y/' $DEFCONFIG_PATH
+          
+          {
+            echo "CONFIG_KPROBES=y"
+            echo "CONFIG_KPROBE_EVENTS=y"
+            echo "CONFIG_HAVE_KPROBES=y"
+            echo "CONFIG_KPROBES_ON_FTRACE=y"
+            echo "CONFIG_DYNAMIC_FTRACE=y"
+            echo "CONFIG_DYNAMIC_FTRACE_WITH_REGS=y"
+            echo "CONFIG_FTRACE=y"
+            echo "CONFIG_KPATCH=y"
+            echo "CONFIG_KALLSYMS=y"
+            echo "CONFIG_KALLSYMS_ALL=y"
+          } >> $DEFCONFIG_PATH
+
+          echo "Kpatch Next configurations successfully injected!"
+      # --- KPATCH NEXT CONFIGURATION END ---
+
+      - name: Start Kernel Compilation
+        run: |
+          # Ithe tumcha actual compilation command asel (e.g. make, mka, build.sh)
+          # Example:
+          # make O=out ARCH=arm64 vendor/sm8550_defconfig
+          # make O=out ARCH=arm64 -j$(nproc)
+          echo "Building kernel with selected Clang: ${{ github.event.inputs.clang_version }}"
+          
